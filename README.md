@@ -28,7 +28,7 @@ This prototype allows for a visual exploration of the device's external design a
 ## How to Run the Prototype
 Clone the Repository:
 
-git clone https://github.com/YOUR_USERNAME/ku-mukeka-narrator-prototype.git
+git clone https://github.com/Omoyi/3D-Device-View-Prototype.git
 
 (Replace YOUR_USERNAME with your GitHub username and ku-mukeka-narrator-prototype with your repository name).
 
@@ -51,7 +51,7 @@ View Component Descriptions: Hover your mouse over any part of the device (exter
 ## Essential Hardware Components (Detailed)
 For a functional "Ku Mukeka" device, the following hardware components are crucial:
 
-- Microcontroller (MCU) / Processor: The central processing unit that executes the device's firmware, manages story playback, processes button inputs, and controls other peripherals.
+- Microcontroller (MCU) / Processor: The central processing unit that executes the device's firmware, manages story playback, processes button inputs, and controls other peripherals. *A lightweight machine learning model (specifically, a sound recognition model) runs on the microcontroller. **This model would be "trained" to recognize the specific acoustic patterns of a baby's cry**.*
 
 - Flash Memory / Storage: Non-volatile memory (e.g., SPI Flash) to permanently store the 10 embedded audio stories.
 
@@ -76,6 +76,8 @@ For a functional "Ku Mukeka" device, the following hardware components are cruci
 - Internal Wiring / Connections: Electrical pathways (traces on PCB, wires) connecting all components.
 
 - LED Indicator (Optional but Recommended): A small light to indicate power status, charging, or low battery.
+
+- Microphone: captures audio from the environment and helps detect child crying.
 
 ## Development History (Major Changes)
 This prototype was developed iteratively, with key features added in stages:
