@@ -179,6 +179,7 @@
             const iconMaterial = new THREE.MeshBasicMaterial({
                 color: 0xFFFFFF // White for button icons
             });
+            const micMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.4 }); // Dark material for mic
 
             // --- Device Outer Shell ---
             const bodyWidth = 3, bodyHeight = 2, bodyDepth = 0.5;
@@ -314,6 +315,14 @@
             kuMukekaPlane.name = 'Ku Mukeka Branding';
             deviceTopHalf.add(kuMukekaPlane);
 
+            // *** NEW: Cry Detection Microphone ***
+            const micGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.02, 16);
+            const microphone = new THREE.Mesh(micGeometry, micMaterial);
+            microphone.position.set(0.9, 0.2, halfBodyDepth + 0.01); // Position near the speaker
+            microphone.rotation.x = Math.PI / 2; // Lay it flat on the surface
+            microphone.name = 'Cry Detection Microphone';
+            deviceTopHalf.add(microphone);
+
 
             // --- Internal Components ---
             internalComponentsGroup = new THREE.Group();
@@ -381,7 +390,8 @@
             // Microcontroller/Processor
             const microcontroller = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.1), chipMaterial); // Made thicker
             microcontroller.position.set(0.2, 0, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z
-            microcontroller.name = 'Microcontroller/Processor';
+            // *** UPDATED NAME for ML capabilities ***
+            microcontroller.name = 'Microcontroller with ML (for Cry Detection)';
             internalComponentsGroup.add(microcontroller);
 
             // Audio Codec/DAC
@@ -439,8 +449,11 @@
                 'Speaker Driver': 'The component responsible for producing sound.',
                 'Internal Wiring': 'The electrical connections between the internal components.',
                 'Power Management Unit (PMU)': 'Manages power flow from solar panel and battery to other components.',
-                'Microcontroller/Processor': 'The "brain" of the device, running the story playback and button logic.',
-                'Audio Codec/DAC': 'Converts digital story data into analog audio signals for the speaker.'
+                // *** UPDATED DESCRIPTION ***
+                'Microcontroller with ML (for Cry Detection)': 'The "brain" of the device, running story playback and a machine learning model to detect a child\'s cry.',
+                'Audio Codec/DAC': 'Converts digital story data into analog audio signals for the speaker.',
+                // *** NEW DESCRIPTION ***
+                'Cry Detection Microphone': 'A sensitive microphone that listens for a child\'s cry to automatically trigger a lullaby.'
             });
 
 
