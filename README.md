@@ -1,5 +1,5 @@
 # Ku Mukeka: Children's Story Narrator - 3D Device Prototype
-![KU Mukeka 3D prototype](/Screen%20Shot%202025-07-31%20at%203.28.54%20PM.png)
+![KU Mukeka 3D prototype](/Screen%20Shot%202025-07-31%20at%203.43.42%20PM.png)
 ## Project Overview
 This repository contains a 3D interactive prototype of the "Ku Mukeka" children's story narrator device. Designed for African children under 10, this device is simple, durable, and uses a small solar panel with a backup battery. It features basic functions for navigating stories (back, forward, repeat).
 
