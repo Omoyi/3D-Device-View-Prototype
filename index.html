@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ku Mukeka 3D Device Prototype</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f0f0; /* Light background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        canvas {
+            display: block;
+            background-color: #e0e0e0; /* Slightly darker background for the canvas area */
+            border-radius: 15px; /* Rounded corners for the canvas */
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15); /* Soft shadow */
+            max-width: 90vw;
+            max-height: 80vh;
+            margin: 20px;
+        }
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            color: #333;
+            z-index: 100;
+            border-radius: 15px; /* Match canvas border-radius */
+        }
+        #message-box {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 101;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            font-size: 0.9em;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2em;
+            text-align: center;
+        }
+        p {
+            color: #555;
+            text-align: center;
+            margin-bottom: 20px;
+            max-width: 800px;
+        }
+        #tooltip {
+            position: absolute; /* Positioned relative to the nearest positioned ancestor (body/viewport) */
+            top: 200px; /* Distance from the top */
+            right: 50px; /* Distance from the right */
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            pointer-events: none; /* Allows mouse events to pass through to the canvas */
+            display: none;
+            z-index: 102;
+            max-width: 250px; /* Limit width for better readability */
+            text-align: left;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ku Mukeka Story Narrator Prototype</h1>
+    <p>Explore the 3D prototype of the Ku Mukeka children's story narrator. Click and drag your mouse to rotate the device. Hover over components to see descriptions. Use your scroll wheel to zoom in and out! **Double-click the device to open/close it!**</p>
+    <div id="loading-overlay">Loading 3D Model...</div>
+    <canvas id="prototypeCanvas"></canvas>
+    <div id="message-box"></div>
+    <div id="tooltip"></div>
+
+    <script>
+        let scene, camera, renderer;
+        let deviceGroup; // Group to hold all device components for rotation
+        let isDragging = false;
+        let previousMousePosition = {
+            x: 0,
+            y: 0
+        };
+        const rotationSpeed = 0.005;
+        const zoomSpeed = 0.1; // Speed of zooming
+        const minZoom = 2; // Closest zoom level (smaller Z value)
+        const maxZoom = 10; // Farthest zoom level (larger Z value)
+
+        // Hover functionality variables
+        let raycaster;
+        let mouse;
+        let hoveredObject = null;
+        let tooltipDiv;
+        const objectDescriptions = {}; // Will be populated in init()
+
+        // Device opening/closing variables
+        let isDeviceOpen = false;
+        let deviceTopHalf;
+        let internalComponentsGroup;
+        const openPosition = 2.5; // Increased how much the top half moves up for better visibility
+        const animationSpeed = 0.02; // Speed of opening/closing animation
+
+        // Function to show messages (not directly used for hover, but kept for general messages)
+        function showMessage(message, duration = 3000) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.textContent = message;
+            msgBox.style.display = 'block';
+            msgBox.style.opacity = '1';
+
+            setTimeout(() => {
+                msgBox.style.opacity = '0';
+                setTimeout(() => {
+                    msgBox.style.display = 'none';
+                }, 300); // Wait for fade out to complete before hiding
+            }, duration);
+        }
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xe0e0e0); // Light grey background for scene
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 4); // Adjusted initial camera position to be slightly closer
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({
+                canvas: document.getElementById('prototypeCanvas'),
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth * 0.7, window.innerHeight * 0.7); // Initial size for canvas
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true; // Enable shadows
+
+            // Device Group (for rotating the entire device)
+            deviceGroup = new THREE.Group();
+            scene.add(deviceGroup);
+
+            // Materials
+            const bodyMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8B4513, // Terracotta brown
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            const solarPanelMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4CAF50, // Green for solar panel
+                emissive: 0x2E8B57, // Slight emissive for glow
+                emissiveIntensity: 0.2,
+                roughness: 0.5,
+                metalness: 0.8
+            });
+            const buttonMaterial = new THREE.MeshStandardMaterial({
+                color: 0x6A5ACD, // Slate blue for buttons
+                roughness: 0.6,
+                metalness: 0.1
+            });
+            const iconMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFFFFFF // White for button icons
+            });
+
+            // --- Device Outer Shell ---
+            const bodyWidth = 3, bodyHeight = 2, bodyDepth = 0.5;
+            const halfBodyDepth = bodyDepth / 2;
+
+            // Bottom Half of Device Body
+            const bottomHalfGeometry = new THREE.BoxGeometry(bodyWidth, bodyHeight, halfBodyDepth, 16, 16, 16);
+            const deviceBottomHalf = new THREE.Mesh(bottomHalfGeometry, bodyMaterial);
+            deviceBottomHalf.position.z = -halfBodyDepth / 2; // Position to form bottom part
+            deviceBottomHalf.castShadow = true;
+            deviceBottomHalf.receiveShadow = true;
+            deviceBottomHalf.name = 'Device Body (Bottom)';
+            deviceGroup.add(deviceBottomHalf);
+
+            // Top Half of Device Body (the "lid" that moves)
+            const topHalfGeometry = new THREE.BoxGeometry(bodyWidth, bodyHeight, halfBodyDepth, 16, 16, 16);
+            deviceTopHalf = new THREE.Mesh(topHalfGeometry, bodyMaterial); // Assign to global variable
+            deviceTopHalf.position.z = halfBodyDepth / 2; // Position to form top part
+            deviceTopHalf.castShadow = true;
+            deviceTopHalf.receiveShadow = true;
+            deviceTopHalf.name = 'Device Body (Top)';
+            deviceGroup.add(deviceTopHalf);
+
+            // Solar Panel (attached to top half)
+            const solarPanelGeometry = new THREE.PlaneGeometry(2.5, 0.4);
+            const solarPanel = new THREE.Mesh(solarPanelGeometry, solarPanelMaterial);
+            solarPanel.position.set(0, 0.7, halfBodyDepth + 0.01); // Position on top of the top half
+            solarPanel.rotation.x = -Math.PI / 10; // Slightly tilted
+            solarPanel.name = 'Solar Panel (Charging)';
+            deviceTopHalf.add(solarPanel); // Add to top half
+
+            // Buttons (attached to top half)
+            const buttonDepth = 0.05;
+
+            // Previous Story Button (Left Arrow)
+            const prevButton = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, buttonDepth), buttonMaterial);
+            prevButton.position.set(-0.9, -0.4, halfBodyDepth + 0.01);
+            prevButton.castShadow = true;
+            prevButton.receiveShadow = true;
+            prevButton.name = 'Previous Story Button';
+            deviceTopHalf.add(prevButton);
+
+            const prevArrowShape = new THREE.Shape();
+            prevArrowShape.moveTo(0, 0.15);
+            prevArrowShape.lineTo(-0.15, 0);
+            prevArrowShape.lineTo(0, -0.15);
+            prevArrowShape.lineTo(0, 0.15);
+            const prevArrowGeometry = new THREE.ShapeGeometry(prevArrowShape);
+            const prevArrow = new THREE.Mesh(prevArrowGeometry, iconMaterial);
+            prevArrow.position.set(-0.9, -0.4, halfBodyDepth + 0.01 + buttonDepth / 2 + 0.01);
+            prevArrow.name = 'Previous Story Button Icon';
+            deviceTopHalf.add(prevArrow);
+
+
+            // Next Story Button (Right Arrow)
+            const nextButton = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, buttonDepth), buttonMaterial);
+            nextButton.position.set(0.9, -0.4, halfBodyDepth + 0.01);
+            nextButton.castShadow = true;
+            nextButton.receiveShadow = true;
+            nextButton.name = 'Next Story Button';
+            deviceTopHalf.add(nextButton);
+
+            const nextArrowShape = new THREE.Shape();
+            nextArrowShape.moveTo(0, 0.15);
+            nextArrowShape.lineTo(0.15, 0);
+            nextArrowShape.lineTo(0, -0.15);
+            nextArrowShape.lineTo(0, 0.15);
+            const nextArrowGeometry = new THREE.ShapeGeometry(nextArrowShape);
+            const nextArrow = new THREE.Mesh(nextArrowGeometry, iconMaterial);
+            nextArrow.position.set(0.9, -0.4, halfBodyDepth + 0.01 + buttonDepth / 2 + 0.01);
+            nextArrow.name = 'Next Story Button Icon';
+            deviceTopHalf.add(nextArrow);
+
+            // Repeat Story Button (Circle)
+            const repeatButton = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, buttonDepth), buttonMaterial);
+            repeatButton.position.set(0, -0.4, halfBodyDepth + 0.01);
+            repeatButton.castShadow = true;
+            repeatButton.receiveShadow = true;
+            repeatButton.name = 'Repeat Story Button';
+            deviceTopHalf.add(repeatButton);
+
+            const repeatCircleGeometry = new THREE.CircleGeometry(0.15, 32);
+            const repeatCircle = new THREE.Mesh(repeatCircleGeometry, iconMaterial);
+            repeatCircle.position.set(0, -0.4, halfBodyDepth + 0.01 + buttonDepth / 2 + 0.01);
+            repeatCircle.name = 'Repeat Story Button Icon';
+            deviceTopHalf.add(repeatCircle);
+
+            // Speaker Grille (attached to top half)
+            const speakerGeometry = new THREE.PlaneGeometry(1.5, 0.3);
+            const speakerCanvas = document.createElement('canvas');
+            speakerCanvas.width = 256;
+            speakerCanvas.height = 64;
+            const speakerCtx = speakerCanvas.getContext('2d');
+            speakerCtx.fillStyle = '#333';
+            speakerCtx.fillRect(0, 0, speakerCanvas.width, speakerCanvas.height);
+            speakerCtx.fillStyle = '#555';
+            for (let i = 0; i < 10; i++) {
+                speakerCtx.beginPath();
+                speakerCtx.arc(20 + i * 25, speakerCanvas.height / 2, 5, 0, Math.PI * 2);
+                speakerCtx.fill();
+            }
+            const speakerTexture = new THREE.CanvasTexture(speakerCanvas);
+            const speakerMaterial = new THREE.MeshBasicMaterial({
+                map: speakerTexture,
+                transparent: true,
+                opacity: 0.9
+            });
+            const speakerGrille = new THREE.Mesh(speakerGeometry, speakerMaterial);
+            speakerGrille.position.set(0, 0.2, halfBodyDepth + 0.01 + 0.01);
+            speakerGrille.name = 'Speaker Grille';
+            deviceTopHalf.add(speakerGrille);
+
+            // "Ku Mukeka" Text on device (attached to top half)
+            const kuMukekaCanvas = document.createElement('canvas');
+            kuMukekaCanvas.width = 512;
+            kuMukekaCanvas.height = 128;
+            const kuMukekaCtx = kuMukekaCanvas.getContext('2d');
+            kuMukekaCtx.fillStyle = '#333';
+            kuMukekaCtx.fillRect(0, 0, kuMukekaCanvas.width, kuMukekaCanvas.height); // Background for text
+            kuMukekaCtx.font = 'Bold 60px Inter';
+            kuMukekaCtx.fillStyle = '#FFFFFF'; // White text
+            kuMukekaCtx.textAlign = 'center';
+            kuMukekaCtx.textBaseline = 'middle';
+            kuMukekaCtx.fillText('Ku Mukeka', kuMukekaCanvas.width / 2, kuMukekaCanvas.height / 2);
+            const kuMukekaTexture = new THREE.CanvasTexture(kuMukekaCanvas);
+            const kuMukekaMaterial = new THREE.MeshBasicMaterial({
+                map: kuMukekaTexture,
+                transparent: true,
+                opacity: 0.9
+            });
+            const kuMukekaPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), kuMukekaMaterial);
+            kuMukekaPlane.position.set(0, -0.8, halfBodyDepth + 0.01 + 0.01); // Position below buttons
+            kuMukekaPlane.name = 'Ku Mukeka Branding';
+            deviceTopHalf.add(kuMukekaPlane);
+
+
+            // --- Internal Components ---
+            internalComponentsGroup = new THREE.Group();
+            deviceGroup.add(internalComponentsGroup); // Add to main device group
+
+            const circuitBoardMaterial = new THREE.MeshStandardMaterial({ color: 0x32CD32, roughness: 0.8, metalness: 0.1 }); // Brighter green
+            const batteryMaterial = new THREE.MeshStandardMaterial({ color: 0xDC143C, roughness: 0.6 }); // Crimson red
+            const chipMaterial = new THREE.MeshStandardMaterial({ color: 0x00BFFF, roughness: 0.5, metalness: 0.9 }); // DeepSkyBlue for chips
+            const wireMaterial = new THREE.MeshStandardMaterial({ color: 0xFFA500, roughness: 0.5 }); // Orange for wires, more visible
+
+            // Circuit Board
+            const circuitBoard = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.5, 0.1), circuitBoardMaterial);
+            circuitBoard.position.set(0, 0, -halfBodyDepth + 0.05); // Position inside bottom half
+            circuitBoard.name = 'Main Circuit Board';
+            internalComponentsGroup.add(circuitBoard);
+
+            // Battery
+            const battery = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.3), batteryMaterial); // Made thicker
+            battery.position.set(-0.8, 0.5, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z to sit on board
+            battery.name = 'Rechargeable Battery';
+            internalComponentsGroup.add(battery);
+
+            // Memory Chip (simplified)
+            const memoryChip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.1), chipMaterial); // Made thicker
+            memoryChip.position.set(0.8, 0.5, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z to sit on board
+            memoryChip.name = 'Memory/Storage Chip (10 Stories)';
+            internalComponentsGroup.add(memoryChip);
+
+            // Speaker Driver (simplified)
+            const speakerDriver = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 32), chipMaterial); // Made thicker
+            speakerDriver.rotation.x = Math.PI / 2; // Rotate to lie flat
+            speakerDriver.position.set(0, -0.3, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z to sit on board
+            speakerDriver.name = 'Speaker Driver';
+            internalComponentsGroup.add(speakerDriver);
+
+            // --- Simplified Wires (as small 3D boxes) ---
+            const wireThickness = 0.1; // Made thicker
+            const wireHeight = 0.1; // Made thicker
+
+            // Wire from Battery to Circuit Board
+            const wire1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, wireHeight, wireThickness), wireMaterial);
+            wire1.position.set(-0.5, 0.5, -halfBodyDepth + 0.15 + wireThickness / 2 + 0.05); // Adjusted Z
+            wire1.name = 'Internal Wiring';
+            internalComponentsGroup.add(wire1);
+
+            // Wire from Memory Chip to Circuit Board
+            const wire2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, wireHeight, wireThickness), wireMaterial);
+            wire2.position.set(0.5, 0.5, -halfBodyDepth + 0.15 + wireThickness / 2 + 0.05); // Adjusted Z
+            wire2.name = 'Internal Wiring';
+            internalComponentsGroup.add(wire2);
+
+            // Wire from Speaker Driver to Circuit Board
+            const wire3 = new THREE.Mesh(new THREE.BoxGeometry(0.3, wireHeight, wireThickness), wireMaterial);
+            wire3.position.set(0, -0.3, -halfBodyDepth + 0.15 + wireThickness / 2 + 0.05); // Adjusted Z
+            wire3.rotation.y = Math.PI / 2; // Rotate to connect horizontally
+            wire3.name = 'Internal Wiring';
+            internalComponentsGroup.add(wire3);
+
+            // Power Management Unit (PMU)
+            const pmu = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.1), chipMaterial); // Made thicker
+            pmu.position.set(-0.4, -0.6, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z
+            pmu.name = 'Power Management Unit (PMU)';
+            internalComponentsGroup.add(pmu);
+
+            // Microcontroller/Processor
+            const microcontroller = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.1), chipMaterial); // Made thicker
+            microcontroller.position.set(0.2, 0, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z
+            microcontroller.name = 'Microcontroller/Processor';
+            internalComponentsGroup.add(microcontroller);
+
+            // Audio Codec/DAC
+            const audioCodec = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), chipMaterial); // Made thicker
+            audioCodec.position.set(0.6, -0.6, -halfBodyDepth + 0.15 + 0.05); // Adjusted Z
+            audioCodec.name = 'Audio Codec/DAC';
+            internalComponentsGroup.add(audioCodec);
+
+            // --- Lights ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft ambient light
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5); // From top-right-front
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -5;
+            directionalLight.shadow.camera.right = 5;
+            directionalLight.shadow.camera.top = 5;
+            directionalLight.shadow.camera.bottom = -5;
+            scene.add(directionalLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-5, -5, -5); // From bottom-left-back
+            scene.add(fillLight);
+
+            // Initial rotation
+            deviceGroup.rotation.x = -Math.PI / 8;
+            deviceGroup.rotation.y = Math.PI / 8;
+
+            // Initialize Raycaster and Mouse vector for hover
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            tooltipDiv = document.getElementById('tooltip');
+
+            // Define descriptions for each named object
+            Object.assign(objectDescriptions, {
+                'Device Body (Bottom)': 'The bottom casing of the device, housing internal components.',
+                'Device Body (Top)': 'The top casing of the device, which opens to reveal the inside.',
+                'Solar Panel (Charging)': 'Small solar panel for continuous charging in sunlight, like a calculator.',
+                'Previous Story Button': 'Press to go back to the previous story in the collection.',
+                'Previous Story Button Icon': 'Icon indicating the "Previous Story" function.',
+                'Next Story Button': 'Press to advance to the next story in the collection.',
+                'Next Story Button Icon': 'Icon indicating the "Next Story" function.',
+                'Repeat Story Button': 'Press to replay the current story from the beginning.',
+                'Repeat Story Button Icon': 'Icon indicating the "Repeat Story" function.',
+                'Speaker Grille': 'The audio output for clear narration of stories.',
+                'Ku Mukeka Branding': 'The branding for "Ku Mukeka", indicating the device is made for African children.',
+                'Main Circuit Board': 'The primary electronic board containing the device\'s logic and connections.',
+                'Rechargeable Battery': 'The internal battery that provides backup power when solar charging is insufficient.',
+                'Memory/Storage Chip (10 Stories)': 'The chip where the 10 embedded stories are stored.',
+                'Speaker Driver': 'The component responsible for producing sound.',
+                'Internal Wiring': 'The electrical connections between the internal components.',
+                'Power Management Unit (PMU)': 'Manages power flow from solar panel and battery to other components.',
+                'Microcontroller/Processor': 'The "brain" of the device, running the story playback and button logic.',
+                'Audio Codec/DAC': 'Converts digital story data into analog audio signals for the speaker.'
+            });
+
+
+            // Event Listeners for mouse interaction
+            renderer.domElement.addEventListener('mousedown', onCanvasMouseDown);
+            renderer.domElement.addEventListener('mouseup', onCanvasMouseUp);
+            renderer.domElement.addEventListener('mousemove', onCanvasMouseMove); // For dragging
+            document.addEventListener('mousemove', onDocumentMouseMove, false); // For hover detection globally
+            renderer.domElement.addEventListener('wheel', onMouseWheel, false); // For zoom
+            renderer.domElement.addEventListener('dblclick', onCanvasDoubleClick, false); // For opening/closing
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Hide loading overlay
+            document.getElementById('loading-overlay').style.display = 'none';
+        }
+
+        function onCanvasMouseDown(event) {
+            isDragging = true;
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
+
+        function onCanvasMouseUp(event) {
+            isDragging = false;
+        }
+
+        function onCanvasMouseMove(event) {
+            if (!isDragging) return;
+
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+
+            // Rotate the entire device group
+            deviceGroup.rotation.y += deltaX * rotationSpeed;
+            deviceGroup.rotation.x += deltaY * rotationSpeed;
+
+            // Limit rotation to prevent flipping upside down
+            deviceGroup.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, deviceGroup.rotation.x));
+
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
+
+        function onMouseWheel(event) {
+            event.preventDefault(); // Prevent page scrolling
+
+            // Adjust camera Z position for zoom
+            camera.position.z -= event.deltaY * zoomSpeed * 0.01; // Smaller multiplier for smoother zoom
+
+            // Clamp zoom to min/max values
+            camera.position.z = Math.max(minZoom, Math.min(maxZoom, camera.position.z));
+        }
+
+        function onCanvasDoubleClick(event) {
+            isDeviceOpen = !isDeviceOpen; // Toggle the state
+        }
+
+        function onDocumentMouseMove(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            const canvas = renderer.domElement;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            // Update the raycaster with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+
+            // Calculate objects intersecting the raycaster
+            const intersects = raycaster.intersectObjects(deviceGroup.children, true);
+
+            if (intersects.length > 0) {
+                // Get the first intersected object that has a name defined in descriptions
+                let foundObject = null;
+                for (let i = 0; i < intersects.length; i++) {
+                    // Check if the intersected object itself or any of its ancestors has a name
+                    let currentObject = intersects[i].object;
+                    while (currentObject) {
+                        if (objectDescriptions[currentObject.name]) {
+                            foundObject = currentObject;
+                            break;
+                        }
+                        currentObject = currentObject.parent;
+                    }
+                    if (foundObject) break; // Found a named object, stop searching
+                }
+
+                if (foundObject && foundObject !== hoveredObject) {
+                    // New object hovered
+                    hoveredObject = foundObject;
+                    const description = objectDescriptions[hoveredObject.name];
+                    tooltipDiv.textContent = description;
+                    tooltipDiv.style.display = 'block';
+                } else if (!foundObject && hoveredObject) {
+                    // Mouse moved off the previously hovered object
+                    hoveredObject = null;
+                    tooltipDiv.style.display = 'none';
+                }
+            } else {
+                // No objects intersected
+                if (hoveredObject) {
+                    hoveredObject = null;
+                    tooltipDiv.style.display = 'none';
+                }
+            }
+        }
+
+
+        function onWindowResize() {
+            const newWidth = window.innerWidth * 0.7;
+            const newHeight = window.innerHeight * 0.7;
+
+            camera.aspect = newWidth / newHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(newWidth, newHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Animate opening/closing of the device
+            const targetY = isDeviceOpen ? openPosition : 0;
+            const currentY = deviceTopHalf.position.y;
+
+            if (Math.abs(targetY - currentY) > 0.01) { // Only animate if not at target
+                deviceTopHalf.position.y += (targetY - currentY) * animationSpeed;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>
